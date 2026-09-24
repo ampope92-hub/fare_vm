@@ -1,0 +1,14 @@
+8
+16
+32
+64
+-128
+0
+0
+0
+LIMIT
+0
+0
+0
+\xff\x80\\A\xff
+-- halt ticks=368 stack=0

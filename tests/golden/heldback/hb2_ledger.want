@@ -1,0 +1,9 @@
+10
+20
+40
+80
+-96
+LIMIT
+-96
+1
+-- error RANGE at=53 ticks=2775

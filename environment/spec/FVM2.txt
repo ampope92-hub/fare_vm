@@ -1,0 +1,169 @@
+FVM-2 fare machine, interpreter reference (revision 7)
+Fare Systems engineering, back-office replay
+
+Every fare rule a reader runs is compiled to an FVM-2 image. Reader
+generations differ in word width and limits, and the image header carries the
+values of the generation it was built for, so one interpreter serves all of
+them. This sheet is normative. Where a transcript is described, it is byte
+exact.
+
+1. Image layout
+
+Header, 14 bytes, multi-byte fields little-endian:
+  0-3    the bytes 46 56 4D 02 ("FVM" and version 2)
+  4      W, word width in bits, 8 to 48
+  5-8    F, tick budget, unsigned 32-bit
+  9-10   S, operand stack limit, at least 1
+  11     D, frame limit, at least 1
+  12-13  L, string length limit (0 is allowed)
+Then, in order:
+  K (uvarint) constants, each a tag byte and a body: tag 0 is an integer
+    (svarint, reduced to W bits on load); tag 1 is a string (uvarint length n,
+    then n bytes, n at most L).
+  N (uvarint, at least 1) functions, each: code offset (uvarint, below C),
+    parameter count P (1 byte), slot count V (1 byte), P at most V.
+    Function 0 is the entry point and has P = 0.
+  C (uvarint) and then C bytes of code. The file ends there.
+
+A uvarint is LEB128: seven bits per byte, lowest group first, top bit set on
+every byte except the last. It has at most 10 bytes and its value is below
+2^64; encodings with redundant high zero groups are accepted. An svarint is a
+uvarint u read as zigzag: u/2 when u is even, -(u+1)/2 when u is odd.
+
+An image that breaks any rule of this section (short, wrong magic, a field out
+of range, an unknown tag, a varint that is too long or too large, a string past
+L, data missing or left over after the code) produces the one-line transcript
+"-- bad image" and nothing runs.
+
+2. Values and state
+
+A value is an integer or a string. Integers are W-bit two's complement: every
+integer the machine produces is reduced into [-2^(W-1), 2^(W-1)) by adding a
+multiple of 2^W. That covers PUSHI operands, constants, arithmetic, LEN, BYTE
+and NUM results. A string is a byte sequence of at most L bytes.
+
+The machine has a pc, one operand stack shared by all frames (at most S
+values), a frame stack (at most D frames), and a handler stack. A frame holds
+V slots that start as integer 0, the stack size when it was entered (its
+base), and its return address. The run starts with one frame for function 0
+(base 0) at that function's offset.
+
+3. Instructions
+
+An instruction is an opcode byte followed by at most one operand, u (uvarint)
+or s (svarint). Its next address is the address after its last byte. Branch
+targets are the next address plus s, computed exactly; only PUSHI reduces its
+operand to W bits.
+
+  00 HALT        01 PUSHI s     02 PUSHK u     03 POP         04 DUP
+  05 SWAP        06 PICK u      08 LOAD u      09 STORE u
+  10 ADD         11 SUB         12 MUL         13 DIV         14 MOD
+  15 NEG         16 AND         17 OR          18 XOR         19 SHL
+  1A SHR         1B USHR        20 EQ          21 LT          22 ULT
+  28 JMP s       29 JZ s        2A JNZ s       30 CALL u      31 RET
+  38 TRY s       39 ENDTRY      3A THROW       40 CAT         41 LEN
+  42 SLICE       43 BYTE        44 CHR         45 STR         46 NUM
+  50 PRINT
+
+Two-operand instructions pop b (the top) and then a, and push the result of
+a op b. SLICE pops c, then s, then x. BYTE pops i, then x.
+
+PUSHK pushes constant u. PICK u pushes a copy of the value u places below the
+top (0 is the top). LOAD and STORE read and write slot u; STORE pops.
+
+ADD SUB MUL NEG: the exact result, reduced. DIV and MOD: q = floor(a/b) and
+r = a - b*q, so r is 0 or has the sign of b; each reduced. b = 0 raises
+DIVZERO. AND OR XOR act on the two's complement bits.
+
+SHL SHR USHR: the count is b read as an unsigned W-bit number. SHL gives a*2^n
+reduced. SHR gives floor(a/2^n). USHR takes a as an unsigned W-bit number,
+shifts it right n places filling with zeros, and reduces the result. When the
+count is W or more, SHL and USHR give 0 and SHR gives -1 for negative a and 0
+otherwise.
+
+EQ gives 1 when a and b have the same type and are equal (strings byte for
+byte), else 0; it never raises. LT: integers compare as signed; strings compare
+byte by byte as unsigned bytes, a proper prefix being smaller; mixed types
+raise TYPE. ULT compares integers as unsigned W-bit numbers; a string operand
+raises TYPE.
+
+JMP always branches. JZ and JNZ pop an integer and branch when it is zero or
+nonzero; a string raises TYPE.
+
+CAT replaces an integer operand by its decimal text, then pushes a followed by
+b. LEN pushes the length of a string. SLICE: x a string, s and c integers; if s
+is negative, add the length of x; clamp s into [0, length]; a negative c raises
+RANGE; the result is the bytes from s up to but not including min(length,
+s+c). BYTE pushes byte i of x as a number 0 to 255 (reduced); i outside
+[0, length) raises RANGE. CHR turns an integer 0 to 255 into a one-byte string,
+anything else raises RANGE. STR pushes the decimal text of an integer. NUM
+reads a string that is an optional "-" followed by one or more ASCII digits
+and nothing else, and pushes that number reduced; any other string raises
+PARSE. A string result longer than L raises LIMIT. An operand of the wrong type
+for any of these raises TYPE, and the types are checked before anything else
+the instruction could raise. Decimal text is an optional "-" then digits with
+no leading zeros; zero is "0".
+
+PRINT pops a value and writes it as one line ending in a line feed (0A).
+Integers are written in decimal. In a string, bytes 20 to 7E are written as
+themselves except backslash, which is written as two backslashes; every other
+byte is written as a backslash, "x" and two lowercase hex digits.
+
+CALL u enters function u. If D frames are already live it raises DEPTH.
+Otherwise it pops P arguments (the one pushed first goes to slot 0), sets the
+other slots to 0, sets the new frame's base to the stack size after the pops,
+and continues at the function's offset. RET pops the return value, cuts the
+stack back to the frame's base, removes any handlers the frame installed,
+removes the frame, pushes the value and continues at the return address (the
+CALL's next address).
+
+TRY s installs a handler that records its target, the current stack size and
+the current frame. ENDTRY removes the innermost handler. THROW pops a value
+and raises it.
+
+4. Errors and faults
+
+TYPE, DIVZERO, RANGE, LIMIT, PARSE and DEPTH are raised as those strings; THROW
+raises whatever value it popped. An instruction that raises has already popped
+the values it takes, except CALL, which checks the frame limit before it pops
+its arguments. When a value is raised and no handler is installed, the run
+ends. Otherwise the innermost handler is removed, frames above its frame are
+removed, the stack is cut back to its recorded size if it is larger, the raised
+value is pushed and execution continues at its target.
+
+A fault ends the run at once and cannot be handled. There are three kinds.
+CODE: the pc is outside the code when an instruction is fetched, an unknown
+opcode, an operand running past the end of the code or too long or too large,
+a PUSHK, LOAD, STORE or CALL index out of range, RET in the entry frame, or
+ENDTRY when there is no handler or the innermost one belongs to another frame.
+STACK: an instruction needs more values than the current frame has above its
+base, or its result would leave more than S values on the stack, or a handler
+cannot push the raised value because S values are already there. FUEL: see
+section 5.
+
+An instruction is checked in this order: fetch and decode, then indexes (CODE),
+then the values it needs (STACK), then anything it raises, then stack room
+(STACK), then ticks (FUEL). An instruction that faults has no effect.
+
+5. Ticks
+
+Every instruction costs 1 tick, with these exceptions. CALL costs 1 plus the
+callee's V. CAT, SLICE, STR and PRINT cost 1 plus one tick for every whole 8
+bytes of the string they produce; for PRINT that is the written line without
+its line feed. An instruction that raises costs 1 tick. Before an instruction
+takes effect, ticks used so far plus its cost must not exceed F; otherwise the
+run ends with a FUEL fault. A handler that cannot push the raised value faults
+after the raising instruction's tick has been charged.
+
+6. Transcript
+
+The interpreter is run as "fvm IMAGE" and writes to standard output the lines
+PRINT produced, then exactly one closing line:
+  -- halt ticks=T stack=K          HALT ran; K values were on the stack
+  -- error V at=A ticks=T          V was raised with no handler installed
+  -- fault KIND at=A ticks=T       KIND is CODE, STACK or FUEL
+  -- bad image                     the only line, see section 1
+T counts the ticks charged, including the instruction that raised. A is the
+address of the instruction that raised or faulted (for a pc outside the code,
+that pc; for a handler that cannot push, the instruction that raised). V is
+written the way PRINT writes it. Every line ends in a line feed.

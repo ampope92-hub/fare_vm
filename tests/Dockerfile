@@ -1,28 +1,47 @@
-# Verifier image. In separate mode harbor does NOT upload tests/ at verify time, so
-# this image must own everything the verifier needs: the tests themselves, any held-out
-# fixtures, and every tool test.sh invokes. Nothing may be installed at verify time.
-FROM public.ecr.aws/docker/library/gcc:13-bookworm@sha256:930f2ebe239275fa67226654cb79273ea34eee672ae61c8a39f689c37fb7ac5c
+# Verifier image. Runs in its own container and sees only the paths declared in `artifacts`.
+# It compiles the agent's Pascal and runs the interpreter once per image, so it needs fpc, and
+# it compares transcripts with the standard library, so it needs nothing else.
 
-# Debian marks the system interpreter externally managed, so pytest goes in a venv.
+# The interpreter runs under a small launcher that installs a seccomp filter (no anonymous
+# executables, no second process). It is compiled in a throwaway stage and linked statically,
+# so the final image carries the binary and no C compiler.
+FROM public.ecr.aws/docker/library/python:3.13-slim-bookworm@sha256:01f42367a0a94ad4bc17111776fd66e3500c1d87c15bbd6055b7371d39c124fb AS launcher
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        python3 \
-        python3-venv \
-    && rm -rf /var/lib/apt/lists/* \
-    && python3 -m venv /venv \
-    && /venv/bin/pip install --no-cache-dir pytest==9.1.1 pytest-json-ctrf==0.5.2
+    && apt-get install -y --no-install-recommends gcc libc6-dev \
+    && rm -rf /var/lib/apt/lists/*
+COPY launch.c /tmp/launch.c
+RUN gcc -O2 -static -Wall -o /fvm_launch /tmp/launch.c
 
-# If the verifier executes anything the agent produced, it is running untrusted code.
-# Drop it to an unprivileged user that owns nothing outside its own scratch space.
-RUN useradd --system --uid 12000 --user-group --no-create-home --shell /usr/sbin/nologin sandbox \
-    && mkdir -p /work/out \
-    && chown sandbox:sandbox /work/out \
-    && chmod 700 /work/out
+FROM public.ecr.aws/docker/library/python:3.13-slim-bookworm@sha256:01f42367a0a94ad4bc17111776fd66e3500c1d87c15bbd6055b7371d39c124fb
 
-COPY test.sh test_outputs.py /tests/
-COPY holdout/ /tests/holdout/
-RUN chmod -R a+rX /tests/holdout
+ENV LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
 
-# Landing directory for the declared artifact. Every artifact path in task.toml needs
-# its parent to exist here, or the upload fails with "Could not find the file ...".
-RUN mkdir -p /app
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fpc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Verifier tooling, hash-pinned. Nothing is installed at trial time.
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir --require-hashes --no-deps -r /tmp/requirements.txt && rm -f /tmp/requirements.txt
+
+COPY --from=launcher /fvm_launch /usr/local/bin/fvm_launch
+RUN chmod 755 /usr/local/bin/fvm_launch
+
+# Agent-authored code is compiled and run in this image, which also holds every expected
+# transcript, so that code runs as `runner`, never as root.
+RUN useradd --create-home --uid 10001 --shell /bin/bash runner
+
+# Landing directory for the declared artifact.
+RUN mkdir -p /app/fvm/src
+
+# The conformance images (the same bytes the agent was given), the held-back images and every
+# expected transcript, root-only. /tests is a runtime mount, so nothing is protected there.
+COPY sample /opt/sample
+COPY heldback /opt/heldback
+COPY golden /opt/golden
+RUN chmod -R go-rwx /opt/sample /opt/heldback /opt/golden
+
+COPY . /tests/
+
+WORKDIR /app

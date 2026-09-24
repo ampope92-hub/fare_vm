@@ -1,0 +1,4 @@
+a\\b ~\x7f\x1f\x00\xff"'\x0a
+
+0
+-- halt ticks=10 stack=0

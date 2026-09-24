@@ -1,11 +1,5 @@
-The summariser in /app is wrong. It runs, but the report it writes does not match what
-downstream expects.
+Our fare readers run their fare rules as FVM-2 images, and the back office needs its own interpreter so a disputed journey can be replayed away from the device. The machine sheet is `/app/spec/FVM2.txt`. The project is `/app/fvm`: the Free Pascal source lives in `/app/fvm/src` with `/app/fvm/src/fvm.pas` as the program (a stub for now), and `/app/fvm/build.sh` builds `/app/fvm/fvm`, which is run as `/app/fvm/fvm IMAGE` and writes the transcript to standard output. The box is offline and fpc with its own run-time units is all there is.
 
-Rebuild /app/out/report.json for the files under /app/data. The report is a JSON object with
-a "files" array — one entry per .txt file, each with its "name" and its "words" count — ordered
-by name, plus a "total_words" holding the sum of every word counted. It is indented by two
-spaces and ends with a trailing newline.
+`/app/conformance` holds the vendor conformance suite, one image per rule of the sheet. Six of them come with the transcript a bench reader printed (the `.expected` files), the rest don't. Grading compiles `src/fvm.pas` itself with `fpc -O2 -Mobjfpc -Sh` from `/app/fvm` (build.sh isn't used, and nothing but objects fpc compiled and its run-time units may reach the linker), then runs the binary on all 75 conformance images and on 56 held-back images built for other reader generations, with other word widths, limits and tick budgets and longer programs that mix the rules. Every one of the 131 transcripts has to match the sheet byte for byte. Standard error and the exit status aren't looked at.
 
-Keep it driveable the way CI drives it: the program stays at /app/src/summarize.py and is run as
-`python3 /app/src/summarize.py --data <dir> --out <file>`. CI points it at directories other
-than the one shipped here.
+The graded runs happen as an unprivileged user with `/app/fvm` as the working directory, one process per image and 10 seconds each. The image is readable but not writable, no directory is writable, no other program on the box can be run, and the interpreter can't start a second process.
