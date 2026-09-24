@@ -329,6 +329,45 @@ def tight(p, rng):
     return p
 
 
+def wide_image(seed):
+    """A generation with limits past one byte: 300 stack values, 150 frames, 300-byte strings,
+    more than 64 constants and 16 functions, 18 nested handlers, ten-byte constants, entry not
+    at offset 0."""
+    rng = random.Random(seed)
+    p = Prog(W=24, F=10 ** 6, S=300, D=150, L=300)
+    for _ in range(70):
+        p.const(ints_for(rng, 24))
+    p.consts.append(("raw", b"\x00" + b"\xff" * 9 + b"\x01"))
+    p.const(bytes(rng.choice(b"fare zone\\\x00\x9f~") for _ in range(300)))
+    p.func("main", 0, 2)
+    p.func("rec", 1, 1)
+    for i in range(2, 20):
+        p.func(f"f{i}", 0, 0)
+    for i in range(2, 20):
+        p.label(f"f{i}")
+        p.ops(f"PUSHK:{rng.randrange(70)} PUSHI:{i} ADD RET")
+    p.ops("rec: LOAD:0 PUSHI:1 ADD CALL:rec RET")
+    p.label("main")
+    p.ops("PUSHK:69 PRINT PUSHK:70 PRINT PUSHK:71 DUP PRINT LEN PRINT CALL:19 CALL:17 SUB PRINT")
+    p.ops("TRY:hd PUSHI:5 CALL:rec hd: PRINT")
+    p.ops(" ".join(f"TRY:h{k}" for k in range(1, 19)) + f" PUSHK:{rng.randrange(70)} THROW")
+    for k in range(1, 19):
+        p.ops(f"h{k}: PRINT PUSHI:{k} PRINT HALT")
+    return p
+
+
+def zero_budget_image(seed):
+    """A tick budget of 0: the first instruction cannot be charged."""
+    rng = random.Random(seed)
+    p = Prog(W=40, F=0, S=8, D=2, L=20)
+    p.const(ints_for(rng, 40))
+    p.func("main", 0, 1)
+    p.func("f", 0, 3)
+    p.ops("f: PUSHK:0 RET")
+    p.ops("main: CALL:f PRINT HALT")
+    return p
+
+
 HELD_WIDTHS = [10, 13, 20, 24, 27, 40, 48]
 
 
@@ -348,4 +387,6 @@ def heldback(seed_base):
         if i % 2 == 0:
             pad_some(out[f"hb{i}_fuzz"], rng)
             pad_some(out[f"hb{i}_fields"], rng)
+    out["hb8_wide"] = wide_image(seed_base * 1000 + 8)
+    out["hb8_zero_budget"] = zero_budget_image(seed_base * 1000 + 9)
     return {k: v.image() for k, v in out.items()}

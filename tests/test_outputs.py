@@ -47,8 +47,8 @@ def _check(suite, stem):
 
 def test_suites_present():
     """Both suites were staged and run: every image has a captured transcript."""
-    assert len(_stems(SAMPLE_IMAGES)) == 75
-    assert len(_stems(HELD_IMAGES)) == 56
+    assert len(_stems(SAMPLE_IMAGES)) == 91
+    assert len(_stems(HELD_IMAGES)) == 58
     for suite, folder in (("sample", SAMPLE_IMAGES), ("heldback", HELD_IMAGES)):
         for stem in _stems(folder):
             assert (RUNS / suite / f"{stem}.out").is_file(), f"{suite}/{stem} was not run"

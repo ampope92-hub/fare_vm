@@ -1,5 +1,5 @@
 """The sample conformance suite: one image per stated rule, each the hard case of that rule."""
-from fvm_asm import Prog
+from fvm_asm import Prog, uvar
 
 
 def P(**kw):
@@ -750,7 +750,7 @@ def code_index_ranges():
     p.func("main", 0, 2)
     p.const(1)
     p.label("main")
-    p.ops("PUSHK:0 PRINT LOAD:1 PRINT STORE:2")
+    p.ops("PUSHK:0 PRINT LOAD:1 PRINT PUSHI:9 STORE:2 HALT")
     return p.image()
 
 
@@ -839,4 +839,169 @@ def order_raise_needs_tick():
     p.func("main", 0, 0)
     p.label("main")
     p.ops("PUSHI:1 PUSHI:0 DIV HALT")
+    return p.image()
+
+
+# ---------------------------------------------------------------- limits and encodings
+@case
+def img_bad_magic_prefix():
+    img = bytearray(_plain().image())
+    img[0] = 0x47
+    return bytes(img)
+
+
+@case
+def img_stack_limit_one():
+    p = P(W=16, S=1)
+    p.func("main", 0, 0)
+    p.label("main")
+    p.ops("PUSHI:7 PRINT PUSHI:5 HALT")
+    return p.image()
+
+
+@case
+def img_frame_limit_wide():
+    p = P(W=16, D=200)
+    p.func("main", 0, 0)
+    p.func("rec", 1, 1)
+    p.label("main")
+    guarded(p, "PUSHI:1 CALL:rec", "a")
+    p.ops("HALT")
+    p.label("rec")
+    p.ops("LOAD:0 PUSHI:1 ADD CALL:rec RET")
+    return p.image()
+
+
+@case
+def img_string_256():
+    p = P(W=16, L=256)
+    p.func("main", 0, 0)
+    p.const(b"fare" * 63 + b"cap!")
+    p.label("main")
+    p.ops("PUSHK:0 PRINT PUSHK:0 LEN PRINT HALT")
+    return p.image()
+
+
+@case
+def img_many_constants():
+    p = P(W=16)
+    p.func("main", 0, 0)
+    for i in range(65):
+        p.const(3 * i + 1)
+    p.label("main")
+    p.ops("PUSHK:64 PRINT PUSHK:0 PRINT HALT")
+    return p.image()
+
+
+@case
+def img_stack_limit_high_byte():
+    p = P(W=16, S=256)
+    p.func("main", 0, 0)
+    p.label("main")
+    p.ops(" ".join(f"PUSHI:{k % 90}" for k in range(1, 257)) + " PRINT PUSHI:5 DUP HALT")
+    return p.image()
+
+
+@case
+def tick_budget_zero():
+    p = P(W=8, F=0, S=1, D=1, L=0)
+    p.func("main", 0, 0)
+    p.label("main")
+    p.ops("HALT")
+    return p.image()
+
+
+@case
+def img_string_257():
+    p = P(W=16, L=257)
+    p.func("main", 0, 0)
+    p.const(b"zone" * 64 + b"!")
+    p.label("main")
+    p.ops("PUSHK:0 PRINT PUSHK:0 LEN PRINT HALT")
+    return p.image()
+
+
+@case
+def img_many_functions():
+    p = P(W=16)
+    p.func("main", 0, 0)
+    for i in range(1, 20):
+        p.func(f"f{i}", 0, 0)
+    p.label("main")
+    p.ops("CALL:19 PRINT CALL:16 PRINT HALT")
+    for i in range(1, 20):
+        p.label(f"f{i}")
+        p.ops(f"PUSHI:{10 * i} RET")
+    return p.image()
+
+
+@case
+def img_varint_ten_bytes():
+    p = P(W=16)
+    p.func("main", 0, 0)
+    p.consts.append(("raw", b"\x00" + uvar((1 << 63) + 2 * 12345)))   # ten bytes, 2^62 + 12345
+    p.label("main")
+    p.ops("PUSHK:0 PRINT HALT")
+    return p.image()
+
+
+@case
+def img_zigzag_max():
+    p = P(W=8)
+    p.func("main", 0, 0)
+    p.consts.append(("raw", b"\x00" + b"\xff" * 9 + b"\x01"))   # u = 2^64 - 1, value -2^63
+    p.consts.append(("raw", b"\x00" + b"\xfd" + b"\xff" * 8 + b"\x01"))   # u = 2^64 - 3
+    p.label("main")
+    p.ops("PUSHK:0 PRINT PUSHK:1 PRINT HALT")
+    return p.image()
+
+
+@case
+def stack_underflow_not_caught():
+    p = P(W=16, S=2)
+    p.func("main", 0, 0)
+    p.label("main")
+    p.ops("TRY:h POP h: PUSHI:1 PRINT HALT")
+    return p.image()
+
+
+@case
+def code_operand_ten_bytes_too_large():
+    p = P(W=16)
+    p.func("main", 0, 0)
+    p.label("main")
+    p.ops("PUSHI:4 PRINT")
+    p.raw(b"\x01" + b"\x80" * 9 + b"\x02")
+    p.ops("PRINT HALT")
+    return p.image()
+
+
+@case
+def raise_many_handlers():
+    p = P(W=16)
+    p.func("main", 0, 0)
+    p.label("main")
+    p.ops(" ".join(f"TRY:h{k}" for k in range(1, 18)) + " PUSHI:0 THROW")
+    for k in range(1, 18):
+        p.ops(f"h{k}: PRINT PUSHI:{k} PRINT HALT")
+    return p.image()
+
+
+@case
+def img_entry_offset_nonzero():
+    p = P(W=16)
+    p.func("main", 0, 0)
+    p.ops("HALT main: PUSHI:6 PRINT HALT")
+    return p.image()
+
+
+@case
+def call_depth_keeps_arguments():
+    p = P(W=16, D=1)
+    p.func("main", 0, 0)
+    p.func("f", 1, 1)
+    p.label("main")
+    p.ops("PUSHI:42 TRY:h CALL:f HALT h: PRINT PRINT HALT")
+    p.label("f")
+    p.ops("HALT")
     return p.image()
