@@ -1,11 +1,9 @@
 FVM-2 fare machine, interpreter reference (revision 7)
 Fare Systems engineering, back-office replay
 
-Every fare rule a reader runs is compiled to an FVM-2 image. Reader
-generations differ in word width and limits, and the image header carries the
-values of the generation it was built for, so one interpreter serves all of
-them. This sheet is normative. Where a transcript is described, it is byte
-exact.
+Fare rules run as FVM-2 images, and each image's header carries the word
+width and limits of its reader generation. This sheet is normative;
+transcripts are byte exact.
 
 1. Image layout
 
@@ -24,6 +22,8 @@ Then, in order:
     parameter count P (1 byte), slot count V (1 byte), P at most V.
     Function 0 is the entry point and has P = 0.
   C (uvarint) and then C bytes of code. The file ends there.
+S and L go up to 65535, and D, P and V to 255; K and N are at most 65535
+and C at most 1048576.
 
 A uvarint is LEB128: seven bits per byte, lowest group first, top bit set on
 every byte except the last. It has at most 10 bytes and its value is below

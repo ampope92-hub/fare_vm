@@ -203,6 +203,8 @@ begin
     cnt := Int64(UVar(Img, p, n));
     if (cnt < 0) or (cnt > n) then
       raise EBadImage.Create('constants');
+    if cnt > 65535 then
+      raise EBadImage.Create('constants');
     SetLength(Consts, cnt);
     for k := 0 to cnt - 1 do
     begin
@@ -230,6 +232,8 @@ begin
     cnt := Int64(UVar(Img, p, n));
     if (cnt < 1) or (cnt > n) then
       raise EBadImage.Create('functions');
+    if cnt > 65535 then
+      raise EBadImage.Create('functions');
     SetLength(Funcs, cnt);
     for k := 0 to cnt - 1 do
     begin
@@ -244,6 +248,8 @@ begin
     end;
     CodeLen := Int64(UVar(Img, p, n));
     if (CodeLen < 1) or (CodeLen <> n - p) then
+      raise EBadImage.Create('code');
+    if CodeLen > 1048576 then
       raise EBadImage.Create('code');
   except
     on EDecode do

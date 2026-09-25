@@ -1,8 +1,7 @@
 #!/bin/bash
 
-# Verifier entrypoint. Runs in the verifier container, not the agent's: it sees only the paths
-# declared in `artifacts` (the Pascal under /app/fvm/src). Everything else it uses is baked into
-# tests/Dockerfile; nothing is fetched here.
+# Verifier entrypoint, in the verifier container: it sees only `artifacts` (the Pascal under
+# /app/fvm/src); everything else is baked into tests/Dockerfile and nothing is fetched here.
 
 set -uo pipefail
 
@@ -126,10 +125,9 @@ for d in /app /app/fvm /tmp /var/tmp /dev/shm /home/runner; do
 done
 echo "no directory is writable by the unprivileged build user"
 
-# run_suite <image-source-dir> <capture-dir>: stage the images into a fresh root-owned directory
-# (0755, each image 0444), then run the binary once per image as the build user, from /app/fvm,
-# under the seccomp launcher, with 10 seconds per image. Standard output goes to a root-owned
-# file opened by this shell; the binary only ever holds the descriptor. Standard error is dropped.
+# run_suite <image-source-dir> <capture-dir>: stage the images root-owned (0755, each 0444), run the
+# binary once per image as the build user under the seccomp launcher, stdout to a root-owned file,
+# stderr dropped, 10 s per image. Only a run killed at 10 s is marked "timeout" (not an own exit 137).
 run_suite() {
   local src="$1" caps="$2" staged img stem
   staged="$(mktemp -d /app/images_XXXXXXXX)"
@@ -140,11 +138,12 @@ run_suite() {
   rm -rf "$caps" && mkdir -p "$caps" && chmod 700 "$caps"
   close_tools
   for img in "$staged"/*.fvm; do
-    stem="$(basename "$img" .fvm)"
+    stem="$(basename "$img" .fvm)" t0="${EPOCHREALTIME/[.,]/}"
     ( cd /app/fvm && export HOME=/home/runner && exec timeout -s KILL 10 setsid \
         setpriv --clear-groups --no-new-privs --reuid runner --regid runner \
         /usr/local/bin/fvm_launch /app/fvm/fvm "$img" ) > "$caps/$stem.out" 2>/dev/null
-    echo "$?" > "$caps/$stem.status"
+    st=$?; [ "$st" -eq 137 ] && [ $(( ${EPOCHREALTIME/[.,]/} - t0 )) -ge 10000000 ] && st=timeout
+    echo "$st" > "$caps/$stem.status"
   done
   open_tools
   as_runner bash -c 'kill -9 -1' 2>/dev/null || true
@@ -156,7 +155,7 @@ run_suite /opt/sample /opt/runs/sample
 # The held-back images are staged only now, after every conformance run has ended.
 echo "=== held-back images ==="
 run_suite /opt/heldback /opt/runs/heldback
-echo "timed out (status 137): $(grep -lx 137 /opt/runs/*/*.status 2>/dev/null | wc -l) image(s)"
+echo "timed out: $(grep -lx timeout /opt/runs/*/*.status 2>/dev/null | wc -l) image(s)"
 
 # Nothing the agent started may be alive while pytest runs or while the reward is written.
 as_runner bash -c 'kill -9 -1' 2>/dev/null || true

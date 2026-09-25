@@ -414,6 +414,27 @@ def targets_image(seed):
     return p
 
 
+def maxima_image(seed):
+    """Each table and limit at its stated maximum at once: 65535 constants with a 65535-byte
+    string among them, 65535 functions, 255 slots in the entry frame and 255 live frames."""
+    rng = random.Random(seed)
+    W = rng.choice([20, 24, 40])
+    p = Prog(W=W, F=10 ** 6, S=65535, D=255, L=65535)
+    sidx = rng.randrange(1000, 65000)
+    for k in range(65535):
+        p.const(bytes(rng.choice(b"fare\\\x01\xfe") for _ in range(65535)) if k == sidx else ints_for(rng, W))
+    p.func("main", 0, 255)
+    for i in range(1, 65534):
+        p.func(f"g{i}", 0, 0, label="main")
+    p.func("rec", 1, 1)
+    p.label("main")
+    p.ops(f"PUSHI:{rng.randint(-999, 999)} STORE:254 PUSHK:65534 PRINT PUSHK:{rng.randrange(65535)} PRINT")
+    p.ops(f"PUSHK:{sidx} LEN PRINT PUSHK:{sidx} PUSHI:{rng.randrange(65535)} BYTE PRINT")
+    p.ops("PUSHI:1 CALL:65534 PRINT LOAD:254 PRINT HALT")
+    p.ops("rec: LOAD:0 PUSHI:254 LT JZ:top LOAD:0 PUSHI:1 ADD CALL:65534 RET top: LOAD:0 RET")
+    return p
+
+
 HELD_WIDTHS = [10, 13, 20, 24, 27, 40, 48]
 
 
@@ -437,4 +458,5 @@ def heldback(seed_base):
     out["hb8_zero_budget"] = zero_budget_image(seed_base * 1000 + 9)
     out["hb9_limits"] = limits_image(seed_base * 1000 + 10)
     out["hb9_targets"] = targets_image(seed_base * 1000 + 11)
+    out["hb10_maxima"] = maxima_image(seed_base * 1000 + 12)
     return {k: v.image() for k, v in out.items()}

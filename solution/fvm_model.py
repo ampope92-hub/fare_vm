@@ -105,6 +105,8 @@ def load(img):
     r = Reader(img, 14)
     try:
         K = r.uvarint()
+        if K > 65535:
+            raise BadImage
         consts = []
         for _ in range(K):
             tag = r.byte()
@@ -121,7 +123,7 @@ def load(img):
             else:
                 raise BadImage
         N = r.uvarint()
-        if N < 1:
+        if not 1 <= N <= 65535:
             raise BadImage
         funcs = []
         for _ in range(N):
@@ -132,7 +134,7 @@ def load(img):
                 raise BadImage
             funcs.append((off, P, V))
         C = r.uvarint()
-        if C < 1:
+        if not 1 <= C <= 1 << 20:
             raise BadImage
         if r.p + C != len(img):
             raise BadImage

@@ -1102,3 +1102,107 @@ def handler_target_exact():
     p.op("TRY", (1 << 63) - 3)
     p.ops("PUSHI:7 THROW")
     return p.image()
+
+
+# ---------------------------------------------------------------- round 4: each header quantity at its stated maximum
+@case
+def img_stack_max():
+    p = P(W=8, F=65536, S=65535, D=1, L=0)
+    p.func("main", 0, 0)
+    p.label("main")
+    p.raw(b"\x01\x00" * 65535)   # 65535 x PUSHI 0
+    p.ops("HALT")
+    return p.image()
+
+
+@case
+def run_frames_max():
+    p = P(W=16, D=255)
+    p.func("main", 0, 0)
+    p.func("rec", 1, 1)
+    p.label("main")
+    guarded(p, "PUSHI:1 CALL:rec", "a")
+    p.ops("HALT rec: LOAD:0 PUSHI:1 ADD CALL:rec RET")
+    return p.image()
+
+
+@case
+def img_string_max():
+    p = P(W=32, S=2, D=1, L=65535)
+    p.const(b"a" * 65534 + b"z")
+    p.func("main", 0, 0)
+    p.label("main")
+    p.ops("PUSHK:0 LEN PRINT PUSHK:0 PUSHI:65534 BYTE PRINT HALT")
+    return p.image()
+
+
+def many_consts(k):
+    p = P(W=16, S=1, D=1, L=0)
+    for _ in range(k - 1):
+        p.const(0)
+    p.const(7)
+    p.func("main", 0, 0)
+    p.label("main")
+    p.ops(f"PUSHK:{k - 1} PRINT HALT")
+    return p.image()
+
+
+def many_funcs(n):
+    p = P(W=16, S=1, D=2, L=0)
+    p.func("main", 0, 0)
+    for i in range(1, n - 1):
+        p.func(f"g{i}", 0, 0, label="main")
+    p.func("f", 0, 0)
+    p.label("main")
+    p.ops(f"CALL:{n - 1} PRINT HALT f: PUSHI:7 RET")
+    return p.image()
+
+
+def big_code(c):
+    p = P(W=16, S=1, D=1, L=0)
+    p.func("main", 0, 0)
+    p.raw(b"\xff" * (c - 4))     # never fetched: the entry is in the last four bytes
+    p.label("main")
+    p.ops("PUSHI:5 PRINT HALT")
+    img = p.image()
+    assert len(p.assemble_code()) == c
+    return img
+
+
+@case
+def img_consts_max():
+    return many_consts(65535)
+
+
+@case
+def img_funcs_max():
+    return many_funcs(65535)
+
+
+@case
+def img_code_max():
+    return big_code(1 << 20)
+
+
+@case
+def run_slots_max():
+    p = P(W=16, S=1, D=1, L=0)
+    p.func("main", 0, 255)
+    p.label("main")
+    p.ops("LOAD:254 PRINT PUSHI:9 STORE:254 LOAD:254 PRINT HALT")
+    return p.image()
+
+
+@case
+def img_consts_over():
+    return many_consts(65536)
+
+
+@case
+def img_funcs_over():
+    return many_funcs(65536)
+
+
+@case
+def img_code_over():
+    return big_code((1 << 20) + 1)

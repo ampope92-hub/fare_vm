@@ -40,15 +40,15 @@ def _check(suite, stem):
     want = _read(GOLDEN / suite / f"{stem}.want")
     cap = RUNS / suite / f"{stem}.out"
     assert cap.is_file() and not cap.is_symlink(), f"no transcript was captured for {stem}"
-    assert _read(RUNS / suite / f"{stem}.status").strip() != b"137", f"{suite}/{stem}: killed at the 10 s limit"
+    assert _read(RUNS / suite / f"{stem}.status").strip() != b"timeout", f"{suite}/{stem}: killed at the 10 s limit"
     got = _read(cap)
     assert got == want, f"{suite}/{stem}: {_explain(got, want)}"
 
 
 def test_suites_present():
     """Both suites were staged and run: every image has a captured transcript."""
-    assert len(_stems(SAMPLE_IMAGES)) == 101
-    assert len(_stems(HELD_IMAGES)) == 60
+    assert len(_stems(SAMPLE_IMAGES)) == 111
+    assert len(_stems(HELD_IMAGES)) == 61
     for suite, folder in (("sample", SAMPLE_IMAGES), ("heldback", HELD_IMAGES)):
         for stem in _stems(folder):
             assert (RUNS / suite / f"{stem}.out").is_file(), f"{suite}/{stem} was not run"
