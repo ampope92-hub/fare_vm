@@ -28,6 +28,7 @@ type
   end;
   THandler = record
     Target: Int64;
+    Far: Boolean;                { Target is past 2^63 - 1, held as its unsigned bits }
     Depth: Integer;
     Frame: Integer;
   end;
@@ -306,6 +307,22 @@ begin
     Dec(Result);
 end;
 
+{ A branch or handler target is next + s, exact. next is small, so only a positive s can carry
+  the sum past 2^63 - 1; then the sum is kept as its unsigned 64-bit bits and marked far. }
+function BranchTarget(nxt, s: Int64; out far: Boolean): Int64;
+begin
+  Result := Int64(QWord(nxt) + QWord(s));
+  far := (s > 0) and (Result < 0);
+end;
+
+function AddrText(a: Int64; far: Boolean): RawByteString;
+begin
+  if far then
+    Result := UIntToStr(QWord(a))
+  else
+    Result := IntToStr(a);
+end;
+
 procedure Run;
 const
   Names: array[0..$50] of string = (
@@ -317,6 +334,7 @@ const
     'PRINT');
 var
   pc, at, nxt, arg, cost, newpc, cnt: Int64;
+  pcFar, newFar: Boolean;
   uarg: QWord;
   op: Byte;
   name: string;
@@ -364,6 +382,7 @@ begin
   HP := 0;
   Used := 0;
   PushFrame(0, 0, -1);
+  pcFar := False;
   pc := Int64(Funcs[0].Offset);
   while True do
   begin
@@ -438,6 +457,7 @@ begin
         pops := npop;
       npush := 0;
       newpc := nxt;
+      newFar := False;
       hasPrint := False;
       try
         if name = 'PUSHI' then
@@ -556,14 +576,14 @@ begin
             Push1(IntVal(0));
         end
         else if name = 'JMP' then
-          newpc := nxt + arg
+          newpc := BranchTarget(nxt, arg, newFar)
         else if (name = 'JZ') or (name = 'JNZ') then
         begin
           v := Stack[SP - 1];
           if v.Kind <> vkInt then
             RaiseStr('TYPE');
           if (v.I = 0) = (name = 'JZ') then
-            newpc := nxt + arg;
+            newpc := BranchTarget(nxt, arg, newFar);
         end
         else if name = 'CALL' then
         begin
@@ -712,6 +732,7 @@ begin
         Stack[SP] := rv;
         Inc(SP);
         pc := h.Target;
+        pcFar := h.Far;
         Continue;
       end;
       if name = 'HALT' then
@@ -728,6 +749,7 @@ begin
           Frames[FP - 1].Slots[i] := Stack[SP - Funcs[uarg].P + i];
         SP := SP - Funcs[uarg].P;
         pc := Int64(Funcs[uarg].Offset);
+        pcFar := False;
         Continue;
       end;
       if name = 'RET' then
@@ -737,6 +759,7 @@ begin
         while (HP > 0) and (Handlers[HP - 1].Frame = FP - 1) do
           Dec(HP);
         pc := Frames[FP - 1].Ret;
+        pcFar := False;
         Dec(FP);
         Stack[SP] := v;
         Inc(SP);
@@ -746,7 +769,7 @@ begin
       begin
         if HP >= Length(Handlers) then
           SetLength(Handlers, HP * 2 + 8);
-        Handlers[HP].Target := nxt + arg;
+        Handlers[HP].Target := BranchTarget(nxt, arg, Handlers[HP].Far);
         Handlers[HP].Depth := SP;
         Handlers[HP].Frame := FP - 1;
         Inc(HP);
@@ -762,10 +785,11 @@ begin
       if hasPrint then
         Emit(printed);
       pc := newpc;
+      pcFar := newFar;
     except
       on e: EFault do
       begin
-        Emit('-- fault ' + e.Kind + ' at=' + IntToStr(e.At) + ' ticks=' + IntToStr(Used));
+        Emit('-- fault ' + e.Kind + ' at=' + AddrText(e.At, pcFar) + ' ticks=' + IntToStr(Used));
         Exit;
       end;
     end;

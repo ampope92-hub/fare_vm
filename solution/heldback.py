@@ -368,6 +368,52 @@ def zero_budget_image(seed):
     return p
 
 
+def limits_image(seed):
+    """A generation past the small fixed arrays: a budget with bit 31 set, more than 128
+    constants, a string over 1024 bytes, more than 32 functions, a code section over 2048 bytes
+    with the entry past it, a slot past 32, more than 64 frames and more than 128 values."""
+    rng = random.Random(seed)
+    p = Prog(W=20, F=0x80000000 + rng.randrange(1 << 30), S=140, D=70, L=1100)
+    for _ in range(130):
+        p.const(ints_for(rng, 20))
+    p.const(bytes(rng.choice(b"tap zone\\\x00\x9f~") for _ in range(rng.randint(1030, 1100))))
+    p.func("main", 0, 34)
+    p.func("rec", 1, 1)
+    for i in range(2, 34):
+        p.func(f"f{i}", 0, 0, label="last" if i == 33 else "rec")
+    p.raw(bytes(rng.randrange(0x51, 0x100) for _ in range(rng.randint(2049, 2200))))
+    p.label("main")
+    p.ops(f"PUSHI:{rng.randint(-99, 99)} STORE:33 LOAD:33 PRINT PUSHK:129 PRINT PUSHK:130 LEN PRINT")
+    p.ops("CALL:33 PRINT PUSHI:1 CALL:rec PRINT")
+    p.ops(" ".join(f"PUSHK:{rng.randrange(130)}" for _ in range(140)) + " HALT")
+    p.ops("rec: LOAD:0 PUSHI:69 LT JZ:top LOAD:0 PUSHI:1 ADD CALL:rec RET top: LOAD:0 RET")
+    p.ops(f"last: PUSHI:{rng.randint(1, 999)} RET")
+    return p
+
+
+def targets_image(seed):
+    """Branch and handler offsets near 2^63: untaken branches and a dropped handler do nothing,
+    then a raise two frames down lands on a handler target past 2^63 - 1."""
+    rng = random.Random(seed)
+    big = lambda: (1 << 63) - 1 - rng.randrange(16)
+    p = Prog(W=27, F=10 ** 5, S=16, D=4, L=40)
+    p.func("main", 0, 1)
+    p.func("f", 1, 1)
+    p.label("main")
+    p.op("PUSHI", 0)
+    p.op("JNZ", big())
+    p.op("PUSHI", rng.randint(1, 50))
+    p.op("JZ", big())
+    p.op("TRY", big())
+    p.ops(f"PUSHI:{rng.randint(-99, 99)} PRINT ENDTRY")
+    p.op("TRY", -(1 << 63))
+    p.ops("ENDTRY")
+    p.op("TRY", big())
+    p.ops(f"PUSHI:{rng.randint(1, 9)} CALL:f HALT")
+    p.ops("f: LOAD:0 PUSHI:0 DIV RET")
+    return p
+
+
 HELD_WIDTHS = [10, 13, 20, 24, 27, 40, 48]
 
 
@@ -389,4 +435,6 @@ def heldback(seed_base):
             pad_some(out[f"hb{i}_fields"], rng)
     out["hb8_wide"] = wide_image(seed_base * 1000 + 8)
     out["hb8_zero_budget"] = zero_budget_image(seed_base * 1000 + 9)
+    out["hb9_limits"] = limits_image(seed_base * 1000 + 10)
+    out["hb9_targets"] = targets_image(seed_base * 1000 + 11)
     return {k: v.image() for k, v in out.items()}

@@ -1005,3 +1005,100 @@ def call_depth_keeps_arguments():
     p.label("f")
     p.ops("HALT")
     return p.image()
+
+
+# ---------------------------------------------------------------- round 3: capacities and exact targets
+@case
+def img_budget_high_bit():
+    p = P(W=8, F=0x80000000, S=1, D=1, L=0)
+    p.func("main", 0, 0)
+    p.label("main")
+    p.ops("HALT")
+    return p.image()
+
+
+@case
+def img_large_tables():
+    p = P(W=16, L=1025)
+    for i in range(129):
+        p.const(i)
+    p.const(b"a" * 1025)
+    p.func("main", 0, 0)
+    for i in range(1, 33):
+        p.func(f"f{i}", 0, 0, label="f32" if i == 32 else "main")
+    p.raw(b"\xff" * 2048)   # never fetched: the entry is at 2048
+    p.label("main")
+    p.ops("PUSHK:128 PRINT PUSHK:129 LEN PRINT CALL:32 PRINT HALT f32: PUSHI:32 RET")
+    return p.image()
+
+
+@case
+def run_large_limits():
+    p = P(W=16, S=129, D=65)
+    p.func("main", 0, 33)
+    p.func("rec", 1, 1)
+    p.label("main")
+    p.ops("LOAD:32 PRINT PUSHI:1 CALL:rec PRINT " + "PUSHI:0 " * 129 + "HALT")
+    p.ops("rec: LOAD:0 PUSHI:64 LT JZ:top LOAD:0 PUSHI:1 ADD CALL:rec RET top: LOAD:0 RET")
+    return p.image()
+
+
+@case
+def img_constant_body_short():
+    return bytes.fromhex("46564d0208000000000100010100010101")
+
+
+@case
+def str_chr_limit_zero():
+    p = P(W=8, L=0)
+    p.func("main", 0, 0)
+    p.label("main")
+    p.ops("PUSHI:65 CHR HALT")
+    return p.image()
+
+
+@case
+def code_load_index():
+    p = P(W=8, F=10, S=2, D=1, L=0)
+    p.func("main", 0, 1)
+    p.label("main")
+    p.ops("LOAD:1 HALT")
+    return p.image()
+
+
+@case
+def tick_print_denied():
+    p = P(W=8, F=1, S=1, D=1, L=0)
+    p.func("main", 0, 0)
+    p.label("main")
+    p.ops("PUSHI:1 PRINT HALT")
+    return p.image()
+
+
+@case
+def branch_target_exact():
+    p = P(W=8, F=10, S=1, D=1, L=0)
+    p.func("main", 0, 0)
+    p.label("main")
+    p.op("JMP", (1 << 63) - 1)
+    p.ops("HALT")
+    return p.image()
+
+
+@case
+def branch_target_exact_near():
+    p = P(W=8, F=2, S=1, D=1, L=0)
+    p.func("main", 0, 0)
+    p.label("main")
+    p.op("JMP", (1 << 63) - 10)
+    return p.image()
+
+
+@case
+def handler_target_exact():
+    p = P(W=8, F=10, S=2, D=1, L=0)
+    p.func("main", 0, 0)
+    p.label("main")
+    p.op("TRY", (1 << 63) - 3)
+    p.ops("PUSHI:7 THROW")
+    return p.image()

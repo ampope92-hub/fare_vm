@@ -10,7 +10,7 @@ exact.
 1. Image layout
 
 Header, 14 bytes, multi-byte fields little-endian:
-  0-3    the bytes 46 56 4D 02 ("FVM" and version 2)
+  0-3    46 56 4D 02 ("FVM" and version 2)
   4      W, word width in bits, 8 to 48
   5-8    F, tick budget, unsigned 32-bit
   9-10   S, operand stack limit, at least 1
@@ -46,7 +46,7 @@ The machine has a pc, one operand stack shared by all frames (at most S
 values), a frame stack (at most D frames), and a handler stack. A frame holds
 V slots that start as integer 0, the stack size when it was entered (its
 base), and its return address. The run starts with one frame for function 0
-(base 0) at that function's offset.
+at that function's offset.
 
 3. Instructions
 
@@ -98,11 +98,11 @@ s+c). BYTE pushes byte i of x as a number 0 to 255 (reduced); i outside
 [0, length) raises RANGE. CHR turns an integer 0 to 255 into a one-byte string,
 anything else raises RANGE. STR pushes the decimal text of an integer. NUM
 reads a string that is an optional "-" followed by one or more ASCII digits
-and nothing else, and pushes that number reduced; any other string raises
-PARSE. A string result longer than L raises LIMIT. An operand of the wrong type
-for any of these raises TYPE, and the types are checked before anything else
-the instruction could raise. Decimal text is an optional "-" then digits with
-no leading zeros; zero is "0".
+(leading zeros allowed) and nothing else, and pushes that number reduced; any
+other string raises PARSE. A string result longer than L raises LIMIT. An
+operand of the wrong type for any of these raises TYPE, and the types are
+checked before anything else the instruction could raise. Decimal text is an
+optional "-" then digits with no leading zeros; zero is "0".
 
 PRINT pops a value and writes it as one line ending in a line feed (0A).
 Integers are written in decimal. In a string, bytes 20 to 7E are written as
