@@ -8,12 +8,7 @@ set -euo pipefail
 install -m 644 "$(dirname "$0")/fvm.pas" /app/fvm/src/fvm.pas
 bash /app/fvm/build.sh
 
-# A look at the images that came with a captured transcript.
-for want in /app/conformance/*.expected; do
-  img="${want%.expected}.fvm"
-  if /app/fvm/fvm "$img" | cmp -s - "$want"; then
-    echo "ok   $(basename "$img")"
-  else
-    echo "DIFF $(basename "$img")"
-  fi
+# A look at how each conformance image ends.
+for img in /app/conformance/*.fvm; do
+  printf '%s  %s\n' "$(basename "$img")" "$(/app/fvm/fvm "$img" | tail -n 1)"
 done

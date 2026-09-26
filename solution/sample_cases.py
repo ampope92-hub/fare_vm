@@ -1206,3 +1206,37 @@ def img_funcs_over():
 @case
 def img_code_over():
     return big_code((1 << 20) + 1)
+
+
+# ---------------------------------------------------------------- round 5: advisory boundary cases
+@case
+def img_varint_ten_bytes_redundant():
+    p = P(W=8, F=1, S=1, D=1, L=0)
+    p.func("main", 0, 0)
+    p.label("main")
+    p.ops("HALT")
+    img = p.image()
+    assert img[14] == 0x00                         # K = 0, written in ten bytes below
+    return img[:14] + b"\x80" * 9 + b"\x00" + img[15:]
+
+
+@case
+def cmp_ult_string_left():
+    p = P(W=16)
+    p.func("main", 0, 0)
+    p.const(b"ab")
+    p.label("main")
+    guarded(p, "PUSHK:0 PUSHI:1 ULT PRINT", "a")
+    p.ops("HALT")
+    return p.image()
+
+
+@case
+def raise_jnz_on_string():
+    p = P(W=16)
+    p.func("main", 0, 0)
+    p.const(b"1")
+    p.label("main")
+    guarded(p, "PUSHK:0 JNZ:d_a PUSHI:7 PRINT", "a")
+    p.ops("HALT")
+    return p.image()

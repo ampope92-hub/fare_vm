@@ -3,8 +3,8 @@
   python3 solution/gen_suites.py        (from the task folder)
 
 Sample suite: one image per rule of the machine sheet, shipped to the agent under
-environment/conformance/ (six of them with their transcripts) and baked, with every
-transcript, into the verifier image under tests/sample/ and tests/golden/sample/.
+environment/conformance/ as NN.fvm (number only, no transcript) and baked, with every
+transcript, into the verifier image under tests/sample/NN_<rule>.fvm and tests/golden/sample/.
 Held-back suite: programs built by heldback.py for other validator generations (other word
 widths, stack, frame, string and tick limits), seed 41, only under tests/heldback/ and
 tests/golden/heldback/. Transcripts come from fvm_model.py, which fvm.pas matches byte for
@@ -24,8 +24,6 @@ from sample_cases import CASES
 
 TASK = HERE.parent
 HELD_SEED = 41
-SHOWN = {"bad_magic", "int_divzero_uncaught", "str_print_escapes", "stack_overflow_fault",
-         "call_argument_slots", "raise_across_frames"}
 
 
 def fresh(d):
@@ -46,11 +44,9 @@ def main():
         stem = f"{i:02d}_{name}"
         img = build()
         want = run(img)
-        (conf / f"{stem}.fvm").write_bytes(img)
+        (conf / f"{i:02d}.fvm").write_bytes(img)
         (samp / f"{stem}.fvm").write_bytes(img)
         (gs / f"{stem}.want").write_bytes(want)
-        if name in SHOWN:
-            (conf / f"{stem}.expected").write_bytes(want)
     for name, img in heldback(HELD_SEED).items():
         (held / f"{name}.fvm").write_bytes(img)
         (gh / f"{name}.want").write_bytes(run(img))
