@@ -1287,3 +1287,13 @@ def tick_budget_zero_bad_opcode():
     p.label("main")
     p.raw(b"\x07")
     return p.image()
+
+
+# ---------------------------------------------------------------- round 8: a FUEL fault with a handler installed
+@case
+def tick_fuel_skips_handler():
+    p = P(W=8, F=1, S=2, D=1, L=8)
+    p.func("main", 0, 0)
+    p.label("main")
+    p.ops("TRY:h HALT h: PRINT HALT")
+    return p.image()
