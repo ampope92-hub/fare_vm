@@ -636,6 +636,8 @@ begin
           else
             r := n - s;
           txt := Copy(x.S, s + 1, r);
+          if Length(txt) > LLim then
+            RaiseStr('LIMIT');
           Push1(StrVal(txt));
           cost := 1 + Length(txt) div 8;
         end

@@ -341,6 +341,8 @@ def run(img):
                     if c < 0:
                         raise Raise(b"RANGE")
                     r = x[s:min(n, s + c)]
+                    if len(r) > L:
+                        raise Raise(b"LIMIT")
                     pushes = [r]
                     cost = 1 + len(r) // 8
                 elif name == "BYTE":

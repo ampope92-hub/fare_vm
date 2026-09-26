@@ -35,16 +35,15 @@ rm -rf /opt/src_pristine
 cp -a /app/fvm/src /opt/src_pristine
 chmod -R go-rwx /opt/src_pristine
 
-# Every executable on the system paths is closed to the build user while the interpreter runs, so
-# a transcript cannot come out of a python, awk or shell the binary hands its work to. Root is not
-# affected. fvm_launch is held out: it is root-only, drops to the build user, installs the seccomp
-# filter and runs the one binary the build user may execute. The dynamic loader is left alone; fpc links its programs statically and
-# the filter refuses a second process, so there is nothing for the loader to be handed.
-TOOLS="$( { find /usr/local/bin /usr/local/sbin /usr/bin /bin /usr/sbin /sbin -xdev -type f -perm /111 2>/dev/null;
-             for l in $(find /usr/local/bin /usr/bin /bin -xdev -type l 2>/dev/null); do t="$(readlink -f "$l")"; [ -f "$t" ] && echo "$t"; done; } \
-  | sort -u | grep -v -E 'ld-linux|/ld\.so$' | grep -v -x -F -e /usr/local/bin/fvm_launch)"
-close_tools() { for f in $TOOLS; do chmod 750 "$f" 2>/dev/null || true; done; }
-open_tools()  { for f in $TOOLS; do chmod 755 "$f" 2>/dev/null || true; done; }
+# Every executable file on the root filesystem except the launcher, the dynamic loader and libc
+# included, loses its group and other execute bits while the interpreter runs, so a transcript cannot
+# come out of any other program the binary hands its work to. Root is not affected, and fpc links the
+# interpreter statically, so it needs no loader. The original modes are kept root-only and restored.
+MODES=/opt/tool_modes
+find / -xdev -type f -perm /011 ! -path /usr/local/bin/fvm_launch -printf '%m %p\n' 2>/dev/null > "$MODES"
+chmod 600 "$MODES"
+close_tools() { cut -d' ' -f2- "$MODES" | xargs -r -d '\n' chmod go-x 2>/dev/null || true; }
+open_tools()  { while read -r m f; do chmod "$m" "$f" 2>/dev/null || true; done < "$MODES"; }
 trap open_tools EXIT
 
 # Build from the collected sources, as the build user, with the command instruction.md states.

@@ -1265,3 +1265,25 @@ def tick_slice_whole_eight():
     p.label("main")
     p.ops("PUSHK:0 PUSHI:0 PUSHI:8 SLICE PRINT HALT")
     return p.image()
+
+
+# ---------------------------------------------------------------- round 7: error names past L, zero budget after decode
+@case
+def str_error_name_past_limit():
+    p = P(W=16, L=2)
+    p.func("main", 0, 0)
+    p.label("main")
+    guarded(p, "PUSHI:1 PUSHI:0 DIV PRINT", "a")
+    p.ops("TRY:n PUSHI:1 PUSHI:0 DIV ENDTRY n: PUSHI:0 PUSHI:7")
+    guarded(p, "SLICE PRINT", "s")
+    p.ops("HALT")
+    return p.image()
+
+
+@case
+def tick_budget_zero_bad_opcode():
+    p = P(W=8, F=0, S=1, D=1, L=0)
+    p.func("main", 0, 0)
+    p.label("main")
+    p.raw(b"\x07")
+    return p.image()

@@ -1,9 +1,7 @@
 FVM-2 fare machine, interpreter reference (revision 7)
 Fare Systems engineering, back-office replay
 
-Fare rules run as FVM-2 images, and each image's header carries the word
-width and limits of its reader generation. This sheet is normative;
-transcripts are byte exact.
+This sheet is normative; transcripts are byte exact.
 
 1. Image layout
 
@@ -40,7 +38,8 @@ L, data missing or left over after the code) produces the one-line transcript
 A value is an integer or a string. Integers are W-bit two's complement: every
 integer the machine produces is reduced into [-2^(W-1), 2^(W-1)) by adding a
 multiple of 2^W. That covers PUSHI operands, constants, arithmetic, LEN, BYTE
-and NUM results. A string is a byte sequence of at most L bytes.
+and NUM results. A string is a byte sequence of at most L bytes, except that
+the error names of section 4 are raised whatever L is.
 
 The machine has a pc, one operand stack shared by all frames (at most S
 values), a frame stack (at most D frames), and a handler stack. A frame holds
