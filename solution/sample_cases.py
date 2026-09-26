@@ -1240,3 +1240,28 @@ def raise_jnz_on_string():
     guarded(p, "PUSHK:0 JNZ:d_a PUSHI:7 PRINT", "a")
     p.ops("HALT")
     return p.image()
+
+
+# ---------------------------------------------------------------- round 6: middle magic bytes, SLICE's eighth byte
+@case
+def bad_magic_second_byte():
+    img = bytearray(_plain().image())
+    img[1] = 0x58
+    return bytes(img)
+
+
+@case
+def bad_magic_third_byte():
+    img = bytearray(_plain().image())
+    img[2] = 0x4E
+    return bytes(img)
+
+
+@case
+def tick_slice_whole_eight():
+    p = P(W=16)
+    p.func("main", 0, 0)
+    p.const(b"abcdefgh")
+    p.label("main")
+    p.ops("PUSHK:0 PUSHI:0 PUSHI:8 SLICE PRINT HALT")
+    return p.image()

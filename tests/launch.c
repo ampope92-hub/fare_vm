@@ -1,19 +1,17 @@
-/* fvm_launch: run the built interpreter under a seccomp filter so it cannot execute native code
-   from anonymous memory. The whole job has to sit in the Pascal and there is nothing else on
-   the box to execute; a program that carries its own machine code and tries to run it through
-   an anonymous file (memfd_create + fexecve, i.e. execveat on an unnamed fd) is stopped here.
-   The filter denies memfd_create, execveat and a few adjacent shared-memory calls with EPERM,
-   and the calls that start a second process with it, so the job stays in the one program and
-   cannot be handed to child workers; everything else is allowed, so the interpreter's ordinary file
-   work is untouched. Installed through prctl with no-new-privs set, which needs no privilege,
-   and the process fails closed: if the filter will not install, it says why and exits without
-   ever running the interpreter. */
+/* fvm_launch: run the built interpreter as the build user under a seccomp filter. It is root-only
+   (mode 0700), started by root, and drops to the build user (uid and gid 10001) itself before the
+   filter goes on, so the interpreter cannot run it again. The filter denies memfd_create, execveat
+   and a few adjacent shared-memory calls with EPERM, and the calls that start a second process, so
+   the job stays in the one program; everything else is allowed. Installed through prctl with
+   no-new-privs set, and the process fails closed: if the uid drop or the filter does not take, it
+   says why and exits without ever running the interpreter. */
 #define _GNU_SOURCE
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <grp.h>
 #include <sys/prctl.h>
 #include <sys/syscall.h>
 #include <linux/audit.h>
@@ -61,6 +59,10 @@ int main(int argc, char **argv) {
         .filter = filter,
     };
 
+    if (setgroups(0, NULL) != 0 || setgid(10001) != 0 || setuid(10001) != 0 || getuid() != 10001 || geteuid() != 10001) {
+        fprintf(stderr, "fvm_launch: dropping to the build user failed: %s\n", strerror(errno));
+        return 111;
+    }
     if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0) {
         fprintf(stderr, "fvm_launch: PR_SET_NO_NEW_PRIVS failed: %s\n", strerror(errno));
         return 111;

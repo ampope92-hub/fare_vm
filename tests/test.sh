@@ -37,8 +37,8 @@ chmod -R go-rwx /opt/src_pristine
 
 # Every executable on the system paths is closed to the build user while the interpreter runs, so
 # a transcript cannot come out of a python, awk or shell the binary hands its work to. Root is not
-# affected. fvm_launch is held out: it installs the seccomp filter and then runs the one binary the
-# build user may execute. The dynamic loader is left alone; fpc links its programs statically and
+# affected. fvm_launch is held out: it is root-only, drops to the build user, installs the seccomp
+# filter and runs the one binary the build user may execute. The dynamic loader is left alone; fpc links its programs statically and
 # the filter refuses a second process, so there is nothing for the loader to be handed.
 TOOLS="$( { find /usr/local/bin /usr/local/sbin /usr/bin /bin /usr/sbin /sbin -xdev -type f -perm /111 2>/dev/null;
              for l in $(find /usr/local/bin /usr/bin /bin -xdev -type l 2>/dev/null); do t="$(readlink -f "$l")"; [ -f "$t" ] && echo "$t"; done; } \
@@ -127,7 +127,7 @@ echo "no directory is writable by the unprivileged build user"
 
 # run_suite <image-source-dir> <capture-dir>: stage the images root-owned (0755, each 0444), run the
 # binary once per image as the build user under the seccomp launcher, stdout to a root-owned file,
-# stderr dropped, 10 s per image. Only a run killed at 10 s is marked "timeout" (not an own exit 137).
+# stderr dropped, 10 s per image. A run ending 124 or 137 after the full 10 s is marked "timeout".
 run_suite() {
   local src="$1" caps="$2" staged img stem
   staged="$(mktemp -d /app/images_XXXXXXXX)"
@@ -140,9 +140,8 @@ run_suite() {
   for img in "$staged"/*.fvm; do
     stem="$(basename "$img" .fvm)" t0="${EPOCHREALTIME/[.,]/}"
     ( cd /app/fvm && export HOME=/home/runner && exec timeout -s KILL 10 setsid \
-        setpriv --clear-groups --no-new-privs --reuid runner --regid runner \
         /usr/local/bin/fvm_launch /app/fvm/fvm "$img" ) > "$caps/$stem.out" 2>/dev/null
-    st=$?; [ "$st" -eq 137 ] && [ $(( ${EPOCHREALTIME/[.,]/} - t0 )) -ge 10000000 ] && st=timeout
+    st=$?; case $st in 124|137) [ $(( ${EPOCHREALTIME/[.,]/} - t0 )) -ge 10000000 ] && st=timeout ;; esac
     echo "$st" > "$caps/$stem.status"
   done
   open_tools

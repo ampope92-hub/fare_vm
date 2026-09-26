@@ -26,7 +26,7 @@ COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir --require-hashes --no-deps -r /tmp/requirements.txt && rm -f /tmp/requirements.txt
 
 COPY --from=launcher /fvm_launch /usr/local/bin/fvm_launch
-RUN chmod 755 /usr/local/bin/fvm_launch
+RUN chmod 700 /usr/local/bin/fvm_launch
 
 # Agent-authored code is compiled and run in this image, which also holds every expected
 # transcript, so that code runs as `runner`, never as root.
