@@ -124,22 +124,23 @@ for d in /app /app/fvm /tmp /var/tmp /dev/shm /home/runner; do
 done
 echo "no directory is writable by the unprivileged build user"
 
-# run_suite <image-source-dir> <capture-dir>: stage the images root-owned (0755, each 0444), run the
-# binary once per image as the build user under the seccomp launcher, stdout to a root-owned file,
-# stderr dropped, 10 s per image. A run ending 124 or 137 after the full 10 s is marked "timeout".
+# run_suite <image-source-dir> <capture-dir>: each image in turn is copied to the same neutral name,
+# image.fvm, in a root-owned directory (0755, the file 0444), so neither argv nor the directory carries
+# the image's name. The binary runs once per image as the build user under the seccomp launcher, stdout
+# to a root-owned file named by the verifier, stderr dropped, 10 s per image. A run ending 124 or 137
+# after the full 10 s is marked "timeout".
 run_suite() {
   local src="$1" caps="$2" staged img stem
   staged="$(mktemp -d /app/images_XXXXXXXX)"
-  cp "$src"/*.fvm "$staged"/
-  chown -R root:root "$staged"
-  chmod 755 "$staged"
-  chmod 444 "$staged"/*.fvm
+  chown root:root "$staged" && chmod 755 "$staged"
   rm -rf "$caps" && mkdir -p "$caps" && chmod 700 "$caps"
   close_tools
-  for img in "$staged"/*.fvm; do
-    stem="$(basename "$img" .fvm)" t0="${EPOCHREALTIME/[.,]/}"
+  for img in "$src"/*.fvm; do
+    stem="$(basename "$img" .fvm)"
+    rm -f "$staged/image.fvm" && cp "$img" "$staged/image.fvm" && chmod 444 "$staged/image.fvm"
+    t0="${EPOCHREALTIME/[.,]/}"
     ( cd /app/fvm && export HOME=/home/runner && exec timeout -s KILL 10 setsid \
-        /usr/local/bin/fvm_launch /app/fvm/fvm "$img" ) > "$caps/$stem.out" 2>/dev/null
+        /usr/local/bin/fvm_launch /app/fvm/fvm "$staged/image.fvm" ) > "$caps/$stem.out" 2>/dev/null
     st=$?; case $st in 124|137) [ $(( ${EPOCHREALTIME/[.,]/} - t0 )) -ge 10000000 ] && st=timeout ;; esac
     echo "$st" > "$caps/$stem.status"
   done
