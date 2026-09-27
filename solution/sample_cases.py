@@ -1297,3 +1297,25 @@ def tick_fuel_skips_handler():
     p.label("main")
     p.ops("TRY:h HALT h: PRINT HALT")
     return p.image()
+
+
+# ---------------------------------------------------------------- round 10: 33 handlers, no fixed depth below that
+@case
+def try_thirty_three_handlers():
+    """33 TRY instructions, each 3 bytes (opcode + a two-byte LEB128 displacement, redundant
+    wherever the value alone would fit one byte), all targeting the final HALT. THROW then
+    raises past all of them to the innermost. No visible image before this one shows a handler
+    stack past a small fixed size, so an interpreter capped at 32 entries reads this image wrong."""
+    p = P(W=8, F=1000, S=2, D=1, L=0)
+    p.func("main", 0, 0)
+    p.label("main")
+    code = bytearray()
+    for i in range(33):
+        s = 99 - 3 * i
+        u = 2 * s
+        code += bytes([0x38, (u & 0x7F) | 0x80, (u >> 7) & 0x7F])
+    code += bytes([0x01, 0x0E])  # PUSHI 7
+    code += bytes([0x3A])        # THROW
+    code += bytes([0x00])        # HALT
+    p.raw(bytes(code))
+    return p.image()
