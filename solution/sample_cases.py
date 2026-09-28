@@ -1334,3 +1334,41 @@ def try_seventy_thousand_handlers():
     p.label("main")
     p.raw(b"\x38\x00" * 70000 + b"\x00")
     return p.image()
+
+
+# ---------------------------------------------------------------- round 12: past the array cap, thrown into
+@case
+def try_65537_handlers_innermost_marked():
+    """65,537 TRY handlers, one past a 65,536-entry array. The first 65,536 all target a HALT
+    that never prints; the last one installed (the innermost) targets a distinct address that
+    prints the thrown value and halts. A THROW then must reach that innermost handler, so an
+    interpreter that caps the handler array at 65,536 entries and silently drops the last
+    install answers with the other, unmarked HALT instead."""
+    p = P(W=8, S=2, D=1, L=0)
+    p.func("main", 0, 0)
+    p.label("main")
+    for _ in range(65536):
+        p.op("TRY", "other")
+    p.op("TRY", "marker")
+    p.op("PUSHI", 7)
+    p.op("THROW")
+    p.label("other")
+    p.op("HALT")
+    p.label("marker")
+    p.op("PRINT")
+    p.op("HALT")
+    p.F = ticks_needed(p)
+    return p.image()
+
+
+# ---------------------------------------------------------------- round 12: the stated maximum tick budget
+@case
+def tick_budget_max_unsigned():
+    """F at the top of its stated range, the unsigned 32-bit value 0xffffffff, on a run that
+    only needs one tick. Nothing on the sheet bounds F below that, so an image at the exact
+    maximum has to run, not fault."""
+    p = P(W=8, F=0xFFFFFFFF, S=1, D=1, L=0)
+    p.func("main", 0, 0)
+    p.label("main")
+    p.ops("HALT")
+    return p.image()
