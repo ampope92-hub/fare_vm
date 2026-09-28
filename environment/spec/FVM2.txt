@@ -42,7 +42,8 @@ and NUM results. A string is a byte sequence of at most L bytes, except that
 the error names of section 4 are raised whatever L is.
 
 The machine has a pc, one operand stack shared by all frames (at most S
-values), a frame stack (at most D frames), and a handler stack. A frame holds
+values), a frame stack (at most D frames), and a handler stack, bounded only
+by the code. A frame holds
 V slots that start as integer 0, the stack size when it was entered (its
 base), and its return address. The run starts with one frame for function 0
 at that function's offset.
@@ -162,7 +163,7 @@ PRINT produced, then exactly one closing line:
   -- error V at=A ticks=T          V was raised with no handler installed
   -- fault KIND at=A ticks=T       KIND is CODE, STACK or FUEL
   -- bad image                     the only line, see section 1
-T counts the ticks charged, including the instruction that raised. A is the
+T counts the ticks charged. A is the
 address of the instruction that raised or faulted (for a pc outside the code,
 that pc; for a handler that cannot push, the instruction that raised). V is
 written the way PRINT writes it. Every line ends in a line feed.

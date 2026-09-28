@@ -1319,3 +1319,18 @@ def try_thirty_three_handlers():
     code += bytes([0x00])        # HALT
     p.raw(bytes(code))
     return p.image()
+
+
+# ---------------------------------------------------------------- round 11: past every header field's own maximum
+@case
+def try_seventy_thousand_handlers():
+    """70,000 TRY instructions, each the two bytes 38 00 (TRY with a zero displacement), never
+    unwound and never thrown into, then HALT. 70,000 is past 65535, the largest maximum any
+    header field states (S, L, K and N), so no plausible fixed handler-stack array holds it
+    either; the sheet's own bound on the handler stack is the code, not a number. Ticks: one
+    per TRY plus one for HALT; the operand stack never moves."""
+    p = P(W=8, F=70001, S=1, D=1, L=0)
+    p.func("main", 0, 0)
+    p.label("main")
+    p.raw(b"\x38\x00" * 70000 + b"\x00")
+    return p.image()
