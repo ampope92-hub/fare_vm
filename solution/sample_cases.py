@@ -1372,3 +1372,74 @@ def tick_budget_max_unsigned():
     p.label("main")
     p.ops("HALT")
     return p.image()
+
+
+# ---------------------------------------------------------------- round 13: the series closes at the
+# sheet's own maximum: FVM2.txt:23-24 bounds code at 1,048,576 bytes and a TRY is at least two bytes
+# (opcode plus a one-byte LEB128 displacement), so no image can install more handlers than the code
+# leaves room for once a value has to be pushed, thrown and caught. 524,285 TRY instructions (each
+# "38 00", displacement 0, never thrown into) plus one more TRY targeting the closing block, PUSHI 7,
+# THROW, PRINT, HALT: 524,286 installs total, code padded with one redundant LEB128 byte on the PUSHI
+# operand to sit at exactly 1,048,576 bytes, the sheet's own code maximum. No fixed-size handler array,
+# whatever its capacity, can ever hold more than this image installs.
+@case
+def try_max_code_handlers():
+    from fvm_asm import padded, svar
+
+    n = 524285
+    code = bytearray()
+    code += bytes([0x01]) + padded(svar(7), 1)   # PUSHI 7, padded to 3 bytes
+    code += b"\x38\x00" * (n - 1)                 # n - 1 self-targeting TRY, 2 bytes each
+    code += bytes([0x38, 0x02])                   # last TRY -> the block below (s = 1)
+    code += bytes([0x3A])                          # THROW
+    code += bytes([0x50])                          # PRINT
+    code += bytes([0x00])                          # HALT
+    assert len(code) == 1048576
+    p = P(W=8, S=2, D=1, L=0)
+    p.func("main", 0, 0)
+    p.label("main")
+    p.raw(bytes(code))
+    p.F = ticks_needed(p)
+    return p.image()
+
+
+# ---------------------------------------------------------------- round 13: PUSHK index masked to W
+@case
+def img_pushk_index_not_masked():
+    """W=8 and 257 constants, indices 0 and 256 holding different values. PUSHK 256 is a legal,
+    in-range uvarint index (Length(Consts) = 257): an interpreter that masks every decoded operand
+    to the word width would select constant 0 instead, since 256 and 255 = 0."""
+    p = P(W=8)
+    p.func("main", 0, 0)
+    p.const(1)
+    for _ in range(255):
+        p.const(0)
+    p.const(42)
+    p.label("main")
+    p.ops("PUSHK:256 PRINT HALT")
+    return p.image()
+
+
+# ---------------------------------------------------------------- round 13: EOF inside the function table
+@case
+def bad_functions_truncated():
+    """A valid 14-byte header, K=0, N=1, and then only the entry function's offset uvarint before
+    EOF: no P, no V, no code. Section 1 requires the one-line -- bad image transcript for data
+    missing after N is declared; this is the hard case the sample corpus was missing."""
+    h = _plain().image()[:14]
+    return h + b"\x00" + b"\x01" + b"\x00"
+
+
+# ---------------------------------------------------------------- round 13: PARSE on an empty string, L=0
+@case
+def num_empty_string_parse():
+    """NUM on an empty string constant with L=0: the grammar needs one or more digits, so this
+    raises PARSE, and PARSE is raised as its full name whatever L is (section 2), not clipped by
+    the string limit that bounds ordinary string values."""
+    p = P(W=8, L=0)
+    p.func("main", 0, 0)
+    p.const(b"")
+    p.label("main")
+    guarded(p, "PUSHK:0 NUM", "e")
+    p.ops("HALT")
+    return p.image()

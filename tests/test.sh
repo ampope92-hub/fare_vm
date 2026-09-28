@@ -52,6 +52,10 @@ trap open_tools EXIT
 rm -rf /app/fvm
 mkdir -p /app/fvm/obj
 cp -a /opt/src_pristine /app/fvm/src
+# Only Pascal source reaches fpc: a candidate-supplied object file staged under src/ (obj/name.o
+# or anywhere else) is removed here, so the awk check below never has to tell such a file apart
+# from one fpc's own -Cn pass just produced under /app/fvm/obj.
+find /app/fvm/src -type f ! \( -iname '*.pas' -o -iname '*.pp' -o -iname '*.inc' \) -delete
 chown -R runner:runner /app/fvm
 build_start=$SECONDS
 setsid \
