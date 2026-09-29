@@ -47,7 +47,7 @@ def _check(suite, stem):
 
 def test_suites_present():
     """Both suites were staged and run: every image has a captured transcript."""
-    assert len(_stems(SAMPLE_IMAGES)) == 128
+    assert len(_stems(SAMPLE_IMAGES)) == 129
     assert len(_stems(HELD_IMAGES)) == 61
     for suite, folder in (("sample", SAMPLE_IMAGES), ("heldback", HELD_IMAGES)):
         for stem in _stems(folder):

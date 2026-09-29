@@ -1443,3 +1443,19 @@ def num_empty_string_parse():
     guarded(p, "PUSHK:0 NUM", "e")
     p.ops("HALT")
     return p.image()
+
+
+# ---------------------------------------------------------------- round 14: unknown opcode under an
+# installed handler must still fault CODE, not be delivered to the handler
+@case
+def code_unknown_opcode_under_handler():
+    """A handler is installed (TRY +2, targeting the PRINT below) before the fetch that hits an
+    unassigned opcode. Section 5 makes an unknown opcode a CODE fault, and CODE is a terminal
+    fault, not a raise: it must stop the run at the point of the bad fetch, never unwind into a
+    handler that happens to be on the stack. An interpreter whose opcode dispatch default falls
+    through the same path as THROW instead prints 'CODE' and halts."""
+    p = P(W=8, F=10, S=2, D=1, L=8)
+    p.func("main", 0, 0)
+    p.label("main")
+    p.raw(bytes.fromhex("3802075000"))  # TRY +2; unknown 07; PRINT; HALT
+    return p.image()
