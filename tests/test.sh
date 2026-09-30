@@ -116,7 +116,9 @@ find /app/fvm -type f -exec chmod 600 {} +
 [ -f /app/fvm/fvm ] && chmod 755 /app/fvm/fvm
 
 # No directory the build user can write to, so nothing can be dropped and executed during a run.
-chown root:root /app && chmod 755 /app
+# /app itself is also closed to listing (0711): the build user can still reach a path it is told,
+# such as the staged image directory below, but cannot enumerate /app to find one on its own.
+chown root:root /app && chmod 711 /app
 chown -R root:root /home/runner && chmod -R go-w /home/runner
 chmod 0755 /tmp /var/tmp /dev/shm
 for d in /app /app/fvm /tmp /var/tmp /dev/shm /home/runner; do
@@ -129,9 +131,11 @@ done
 echo "no directory is writable by the unprivileged build user"
 
 # run_suite <image-source-dir> <capture-dir>: each image in turn is copied to the same neutral name,
-# image.fvm, in a root-owned directory (0755, the file 0444), so neither argv nor the directory carries
-# the image's name. The binary runs once per image as the build user under the seccomp launcher, stdout
-# to a root-owned file named by the verifier, stderr dropped, 10 s per image. A run ending 124 or 137
+# image.fvm, in a fresh root-owned directory under the now-unlistable /app (the directory 0755, the
+# file 0444), so neither argv nor a listing of /app carries the image's name; the path handed to the
+# binary as argv is the only way to it. The binary runs once per image as the build user under the
+# seccomp launcher, stdout to a root-owned file named by the verifier, stderr dropped, 10 s per
+# image. A run ending 124 or 137
 # after the full 10 s is marked "timeout".
 run_suite() {
   local src="$1" caps="$2" staged img stem
