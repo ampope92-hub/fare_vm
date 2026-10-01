@@ -1489,3 +1489,36 @@ def call_param_count_max():
     p.label("f")
     p.ops("LOAD:254 RET")
     return p.image()
+
+
+# ---------------------------------------------------------------- round 17: DEPTH must bypass a
+# too-small string limit, and ENDTRY must remove the innermost of two live handlers
+@case
+def call_depth_bypasses_zero_strlen():
+    """L=0, D=1, S=2, ample fuel. Function 0 (main, P=0) installs a handler, then calls itself
+    (CALL 0); one frame is already live so CALL raises DEPTH before it pops anything. Section 2
+    says the error names of section 4 are raised whatever L is, so DEPTH must reach the handler
+    as the full five-byte string even though L=0 cannot otherwise hold it. The shipped
+    call_depth_limit case has L=255, so it cannot tell apart an interpreter that builds DEPTH
+    through the ordinary L-limited string path, which would deliver LIMIT here instead."""
+    p = P(W=16, D=1, S=2, L=0)
+    p.func("main", 0, 0)
+    p.label("main")
+    p.ops("TRY:h CALL:0 HALT h: PRINT HALT")
+    return p.image()
+
+
+@case
+def raise_endtry_innermost_of_two():
+    """Two live handlers (outer, inner) when ENDTRY runs. Section 3 makes ENDTRY remove the
+    innermost handler; the shipped raise_endtry_none case has only one handler at its ENDTRY, and
+    raise_nested_handlers has nested handlers but no ENDTRY, so neither tells apart an ENDTRY that
+    drops the oldest handler instead. Here ENDTRY must leave the outer handler live: the following
+    THROW 7 reaches it and prints 7, not the inner handler's 9."""
+    p = P(W=16)
+    p.func("main", 0, 0)
+    p.label("main")
+    p.ops("TRY:outer TRY:inner ENDTRY PUSHI:7 THROW "
+          "outer: PRINT HALT "
+          "inner: POP PUSHI:9 PRINT HALT")
+    return p.image()
