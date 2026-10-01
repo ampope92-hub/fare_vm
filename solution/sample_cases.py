@@ -1459,3 +1459,33 @@ def code_unknown_opcode_under_handler():
     p.label("main")
     p.raw(bytes.fromhex("3802075000"))  # TRY +2; unknown 07; PRINT; HALT
     return p.image()
+
+
+# ---------------------------------------------------------------- round 16: an empty image is a
+# short image too, and the permitted P=255 parameter-count endpoint
+@case
+def bad_empty_image():
+    """A zero-byte file. Section 1 makes a short image (any length under the 14-byte header)
+    produce exactly '-- bad image', with no exception for the shortest case of all. The nearest
+    shipped fixture, bad_short_header, is 13 bytes and already has the full four-byte magic; a
+    parser that reads the magic before checking the file length passes that case and this one is
+    the one the suite was missing."""
+    return b""
+
+
+@case
+def call_param_count_max():
+    """S=255, D=2. Function 0 (P=0) pushes the 255 arguments 0..254 in order and calls function 1
+    (P=V=255), which loads slot 254 (the last argument, 254) and returns it; the caller prints it.
+    P and V both go up to 255 (section 1); the shipped call_argument_slots case only reaches P=3
+    and run_slots_max only reaches V=255 with P=0, so a parser that caps the parameter count below
+    the sheet's own maximum was never exercised at the endpoint itself."""
+    p = P(S=255, D=2)
+    p.func("main", 0, 0)
+    p.func("f", 255, 255)
+    p.label("main")
+    p.ops(" ".join(f"PUSHI:{i}" for i in range(255)))
+    p.ops("CALL:f PRINT HALT")
+    p.label("f")
+    p.ops("LOAD:254 RET")
+    return p.image()
